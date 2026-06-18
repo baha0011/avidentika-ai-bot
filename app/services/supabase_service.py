@@ -43,7 +43,7 @@ class SupabaseService:
             "updated_at": datetime.now(UTC).isoformat(),
         }
         result = await self._execute(
-            self.client.table("profiles").upsert(payload, on_conflict="telegram_user_id").select("id").limit(1)
+            self.client.table("profiles").upsert(payload, on_conflict="telegram_user_id").select("id")
         )
         if not result.data:
             raise DatabaseError("Profile was not returned")
@@ -52,7 +52,7 @@ class SupabaseService:
     async def create_appointment(self, profile_id: str, value: AppointmentInput) -> dict[str, Any]:
         payload = value.to_record(profile_id)
         payload["public_id"] = f"A-{uuid4().hex[:8].upper()}"
-        result = await self._execute(self.client.table("appointments").insert(payload).select("*").limit(1))
+        result = await self._execute(self.client.table("appointments").insert(payload).select("*"))
         if not result.data:
             raise DatabaseError("Appointment was not created")
         logger.info("Appointment created: %s", payload["public_id"])
@@ -61,7 +61,7 @@ class SupabaseService:
     async def create_support_request(self, profile_id: str, value: SupportInput) -> dict[str, Any]:
         payload = value.to_record(profile_id)
         payload["public_id"] = f"S-{uuid4().hex[:8].upper()}"
-        result = await self._execute(self.client.table("support_requests").insert(payload).select("*").limit(1))
+        result = await self._execute(self.client.table("support_requests").insert(payload).select("*"))
         if not result.data:
             raise DatabaseError("Support request was not created")
         logger.info("Support request created: %s", payload["public_id"])
@@ -82,7 +82,7 @@ class SupabaseService:
             payload["closed_at"] = now
         table = "appointments" if kind == "appointment" else "support_requests"
         result = await self._execute(
-            self.client.table(table).update(payload).eq("public_id", public_id).select("*").limit(1)
+            self.client.table(table).update(payload).eq("public_id", public_id).select("*")
         )
         if not result.data:
             raise DatabaseError("Request was not found")

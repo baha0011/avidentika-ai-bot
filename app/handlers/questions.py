@@ -41,7 +41,26 @@ async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message.reply_text("Забагато запитів. Спробуйте трохи пізніше." if lang == "uk" else "Слишком много запросов. Попробуйте немного позже.")
         return
     try:
-        answer = await context.application.bot_data["ai"].answer(text, lang)
+        previous = context.user_data.get("last_question", "")
+        lower_text = text.lower()
+
+        follow_up_markers = (
+            "это", "эта", "этот", "эти", "такое",
+            "це", "ця", "цей", "ці", "таке",
+        )
+
+        is_follow_up = bool(previous) and (
+            any(word in lower_text.split() for word in follow_up_markers)
+            or lower_text.startswith(("а сколько", "а как", "а когда"))
+        )
+
+        question_for_ai = (
+            f"{previous}\nУточнение пользователя: {text}"
+            if is_follow_up else text
+        )
+
+        answer = await context.application.bot_data["ai"].answer(question_for_ai, lang)
+        context.user_data["last_question"] = question_for_ai
         markup = source_keyboard(lang, answer.source_url) if answer.source_url else None
         await message.reply_text(answer.text, reply_markup=markup, disable_web_page_preview=True)
     except KnowledgeSearchError:
