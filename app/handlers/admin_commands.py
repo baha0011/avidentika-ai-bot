@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.handlers.admin import is_authorized_admin
 from app.services.notification_service import admin_actions_keyboard
 from app.utils.datetime_utils import utc_day_bounds
 from app.utils.security import safe_html
+
+logger = logging.getLogger(__name__)
+
+ADMIN_PANEL_BUTTON = "⚙️ Админ-панель"
+
+
+def admin_persistent_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(ADMIN_PANEL_BUTTON)]],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Панель администратора",
+    )
 
 
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
@@ -20,6 +34,18 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📆 Завтра", callback_data="admin:list:tomorrow"),
         ],
     ])
+
+
+async def activate_persistent_panel(application) -> None:
+    """Show the persistent admin keyboard without blocking bot startup on failure."""
+    try:
+        await application.bot.send_message(
+            chat_id=application.bot_data["settings"].admin_chat_id,
+            text="Панель администратора активна.",
+            reply_markup=admin_persistent_keyboard(),
+        )
+    except Exception as exc:
+        logger.warning("Could not activate persistent admin panel: %s", type(exc).__name__)
 
 
 async def _check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:

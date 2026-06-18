@@ -43,7 +43,12 @@ def build_application(settings=None) -> Application:
         db.client, openai_client, settings.openai_embedding_model,
         settings.rag_match_threshold, settings.rag_match_count,
     )
-    application = Application.builder().token(settings.telegram_bot_token).build()
+    application = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .post_init(admin_commands.activate_persistent_panel)
+        .build()
+    )
     application.bot_data.update({
         "settings": settings,
         "db": db,
@@ -78,6 +83,9 @@ def build_application(settings=None) -> Application:
     application.add_handler(CommandHandler("new", admin_commands.new_requests))
     application.add_handler(CommandHandler("find", admin_commands.find_request))
     application.add_handler(CommandHandler("admin", admin_commands.panel))
+    application.add_handler(MessageHandler(
+        filters.Regex(r"^⚙️ Админ-панель$"), admin_commands.panel
+    ))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, questions.handle_question))
     application.add_error_handler(on_error)
     if application.job_queue is None:
