@@ -13,6 +13,7 @@ from app.services.knowledge_service import KnowledgeService
 from app.services.notification_service import NotificationService
 from app.services.supabase_service import SupabaseService
 from app.services.reminder_service import send_due_reminders
+from app.services.google_sheets_service import GoogleSheetsService
 from app.utils.logging import configure_logging
 from app.utils.security import RateLimiter
 
@@ -30,7 +31,13 @@ async def on_error(update: object, context) -> None:
 
 def build_application(settings=None) -> Application:
     settings = settings or load_settings()
-    db = SupabaseService(settings.supabase_url, settings.supabase_service_role_key)
+    sheets = GoogleSheetsService(
+        settings.google_sheets_enabled,
+        settings.google_sheets_web_app_url,
+        settings.google_sheets_webhook_secret,
+        timeout_seconds=settings.http_timeout_seconds,
+    )
+    db = SupabaseService(settings.supabase_url, settings.supabase_service_role_key, sheets=sheets)
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.http_timeout_seconds, max_retries=2)
     knowledge = KnowledgeService(
         db.client, openai_client, settings.openai_embedding_model,
@@ -43,6 +50,7 @@ def build_application(settings=None) -> Application:
         "ai": AIService(openai_client, settings.openai_model, knowledge),
         "notifications": NotificationService(settings.admin_chat_id),
         "rate_limiter": RateLimiter(settings.rate_limit_requests, settings.rate_limit_period_seconds),
+        "sheets": sheets,
     })
     application.add_handler(appointments.conversation())
     application.add_handler(support.conversation())
@@ -55,6 +63,10 @@ def build_application(settings=None) -> Application:
         admin.change_status,
         pattern=r"^adm:(appointment|support):[AS]-[A-F0-9]{8}:(in_progress|closed|cancelled)$",
     ))
+    application.add_handler(CallbackQueryHandler(
+        admin_commands.panel_action,
+        pattern=r"^admin:list:(new|today|tomorrow)$",
+    ))
     application.add_handler(CallbackQueryHandler(start.show_main_menu, pattern=r"^quick:menu$"))
     application.add_handler(CallbackQueryHandler(questions.prompt_question, pattern=r"^quick:ask$"))
     application.add_handler(CommandHandler("start", start.start))
@@ -65,6 +77,7 @@ def build_application(settings=None) -> Application:
     application.add_handler(CommandHandler("tomorrow", admin_commands.tomorrow))
     application.add_handler(CommandHandler("new", admin_commands.new_requests))
     application.add_handler(CommandHandler("find", admin_commands.find_request))
+    application.add_handler(CommandHandler("admin", admin_commands.panel))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, questions.handle_question))
     application.add_error_handler(on_error)
     if application.job_queue is None:

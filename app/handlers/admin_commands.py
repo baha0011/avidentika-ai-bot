@@ -3,13 +3,23 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.handlers.admin import is_authorized_admin
 from app.services.notification_service import admin_actions_keyboard
 from app.utils.datetime_utils import utc_day_bounds
 from app.utils.security import safe_html
+
+
+def admin_panel_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🆕 Новые заявки", callback_data="admin:list:new")],
+        [
+            InlineKeyboardButton("📅 Сегодня", callback_data="admin:list:today"),
+            InlineKeyboardButton("📆 Завтра", callback_data="admin:list:tomorrow"),
+        ],
+    ])
 
 
 async def _check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -33,7 +43,9 @@ async def day_list(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: i
     rows = await context.application.bot_data["db"].list_appointments_between(start, end)
     title = "сегодня" if offset == 0 else "завтра"
     text = f"📅 Записи на {title} ({day:%d.%m.%Y}):\n\n" + ("\n\n".join(_line(row) for row in rows) if rows else "Записей нет.")
-    await update.effective_message.reply_text(text, parse_mode="HTML")
+    await update.effective_message.reply_text(
+        text, parse_mode="HTML", reply_markup=admin_panel_keyboard()
+    )
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -51,7 +63,30 @@ async def new_requests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"<code>{safe_html(row['public_id'])}</code> — {safe_html(row.get('patient_name') or '—')} · {safe_html(row.get('phone') or '—')}"
         for row in rows[:30]
     ) if rows else "Новых заявок нет.")
-    await update.effective_message.reply_text(text, parse_mode="HTML")
+    await update.effective_message.reply_text(
+        text, parse_mode="HTML", reply_markup=admin_panel_keyboard()
+    )
+
+
+async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _check(update, context):
+        return
+    await update.effective_message.reply_text(
+        "⚙️ Панель администратора",
+        reply_markup=admin_panel_keyboard(),
+    )
+
+
+async def panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    action = query.data.rsplit(":", 1)[-1]
+    if action == "new":
+        await new_requests(update, context)
+    elif action == "today":
+        await day_list(update, context, 0)
+    elif action == "tomorrow":
+        await day_list(update, context, 1)
 
 
 async def find_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
