@@ -21,6 +21,29 @@ def test_client_notification_in_progress() -> None:
     )
 
 
+def test_new_admin_notification_contains_telegram_account() -> None:
+    bot = SimpleNamespace(send_message=AsyncMock())
+    record = {
+        "public_id": "A-1234ABCD",
+        "patient_name": "Олена",
+        "phone": "+380671234567",
+        "service": "Діагностика",
+        "preferred_date": "25.06.2026",
+        "preferred_time": "15:30",
+        "confirmed_doctor": "Амін",
+    }
+    profile = {"username": "olena_test", "telegram_user_id": 321}
+
+    asyncio.run(NotificationService(999).notify(bot, "appointment", record, profile))
+
+    text = bot.send_message.await_args.kwargs["text"]
+    assert "Номер: <code>A-1234ABCD</code>" in text
+    assert "Telegram: @olena_test" in text
+    assert "Дата: 25.06.2026" in text
+    assert "Время: 15:30" in text
+    assert "Доктор: Амін" in text
+
+
 def test_client_notification_closed() -> None:
     assert _sent_text("closed", "uk") == (
         "✅ Вашу заявку A-1234ABCD закрито адміністратором."

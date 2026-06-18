@@ -6,6 +6,18 @@ from app.keyboards.keyboards import client_actions_keyboard, client_main_menu_ke
 from app.utils.security import safe_html
 
 
+def telegram_account_html(profile: dict | None) -> str:
+    if not profile:
+        return "не указан"
+    username = str(profile.get("username") or "").lstrip("@").strip()
+    if username:
+        return f"@{safe_html(username)}"
+    telegram_user_id = profile.get("telegram_user_id")
+    if telegram_user_id is not None:
+        return f"ID: <code>{safe_html(telegram_user_id)}</code>"
+    return "не указан"
+
+
 def admin_actions_keyboard(kind: str, public_id: str, status: str) -> InlineKeyboardMarkup | None:
     if status == "new":
         return InlineKeyboardMarkup([[
@@ -38,7 +50,7 @@ class NotificationService:
     def __init__(self, admin_chat_id: int) -> None:
         self.admin_chat_id = admin_chat_id
 
-    async def notify(self, bot, kind: str, record: dict) -> None:
+    async def notify(self, bot, kind: str, record: dict, profile: dict | None = None) -> None:
         is_appointment = kind == "appointment"
         title = "🦷 Новая заявка на приём" if is_appointment else "💬 Новое обращение"
         details = [
@@ -46,12 +58,14 @@ class NotificationService:
             f"Номер: <code>{safe_html(record['public_id'])}</code>",
             f"Имя: {safe_html(record.get('patient_name'))}",
             f"Телефон: <code>{safe_html(record.get('phone'))}</code>",
+            f"Telegram: {telegram_account_html(profile)}",
         ]
         if is_appointment:
             details.extend([
                 f"Услуга: {safe_html(record.get('service'))}",
                 f"Дата: {safe_html(record.get('preferred_date') or 'не указана')}",
                 f"Время: {safe_html(record.get('preferred_time') or 'не указано')}",
+                f"Доктор: {safe_html(record.get('confirmed_doctor') or 'не назначен')}",
                 f"Комментарий: {safe_html(record.get('comment') or '—')}",
             ])
         else:

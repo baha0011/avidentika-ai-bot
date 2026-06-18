@@ -49,6 +49,7 @@ def test_supabase_layer_is_mockable() -> None:
     user = SimpleNamespace(id=12, username="test", first_name="Ivan", last_name=None)
     result = asyncio.run(service.upsert_profile(user, "uk"))
     assert result["telegram_user_id"] == 12
+    assert result["username"] == "test"
 
 
 def test_creates_appointment_with_public_id() -> None:

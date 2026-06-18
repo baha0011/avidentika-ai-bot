@@ -83,7 +83,9 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         profile = await db.upsert_profile(update.effective_user, lang)
         record = await db.create_support_request(profile["id"], SupportInput(**data))
-        await context.application.bot_data["notifications"].notify(context.bot, "support", record)
+        await context.application.bot_data["notifications"].notify(
+            context.bot, "support", record, profile
+        )
     except Exception:
         await query.edit_message_text("Не вдалося передати звернення. Спробуйте пізніше." if lang == "uk" else "Не удалось передать обращение. Попробуйте позже.")
         return ConversationHandler.END

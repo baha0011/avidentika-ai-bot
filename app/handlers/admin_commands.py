@@ -8,7 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
 from telegram.ext import ContextTypes
 
 from app.handlers.admin import is_authorized_admin
-from app.services.notification_service import admin_actions_keyboard
+from app.services.notification_service import admin_actions_keyboard, telegram_account_html
 from app.utils.datetime_utils import utc_day_bounds
 from app.utils.security import safe_html
 
@@ -55,11 +55,32 @@ async def _check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
-def _line(record: dict) -> str:
-    return (
-        f"<code>{safe_html(record['public_id'])}</code> — {safe_html(record.get('confirmed_time') or 'время не указано')}\n"
-        f"{safe_html(record.get('patient_name') or '—')} · {safe_html(record.get('confirmed_service') or record.get('service') or '—')} · {safe_html(record.get('confirmed_doctor') or '—')}"
+def _profile(record: dict) -> dict | None:
+    profile = record.get("profiles")
+    if isinstance(profile, list):
+        return profile[0] if profile else None
+    return profile if isinstance(profile, dict) else None
+
+
+def _request_card(record: dict) -> str:
+    service = (
+        record.get("confirmed_service")
+        or record.get("service")
+        or "Обращение к администратору"
     )
+    date = record.get("confirmed_date") or record.get("preferred_date") or "дата не указана"
+    time = record.get("confirmed_time") or record.get("preferred_time") or "время не указано"
+    doctor = record.get("confirmed_doctor") or "не назначен"
+    return "\n".join([
+        f"🔹 Номер заявки: <code>{safe_html(record['public_id'])}</code>",
+        f"Имя: {safe_html(record.get('patient_name') or '—')}",
+        f"Телефон: <code>{safe_html(record.get('phone') or '—')}</code>",
+        f"Telegram: {telegram_account_html(_profile(record))}",
+        f"Услуга: {safe_html(service)}",
+        f"Дата записи: {safe_html(date)}",
+        f"Время записи: {safe_html(time)}",
+        f"Доктор: {safe_html(doctor)}",
+    ])
 
 
 async def day_list(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int) -> None:
@@ -68,7 +89,7 @@ async def day_list(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: i
     start, end = utc_day_bounds(day)
     rows = await context.application.bot_data["db"].list_appointments_between(start, end)
     title = "сегодня" if offset == 0 else "завтра"
-    text = f"📅 Записи на {title} ({day:%d.%m.%Y}):\n\n" + ("\n\n".join(_line(row) for row in rows) if rows else "Записей нет.")
+    text = f"📅 Записи на {title} ({day:%d.%m.%Y}):\n\n" + ("\n\n".join(_request_card(row) for row in rows) if rows else "Записей нет.")
     await update.effective_message.reply_text(
         text, parse_mode="HTML", reply_markup=admin_panel_keyboard()
     )
@@ -85,10 +106,10 @@ async def tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def new_requests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _check(update, context): return
     rows = await context.application.bot_data["db"].list_new_requests()
-    text = "🆕 Новые заявки:\n\n" + ("\n\n".join(
-        f"<code>{safe_html(row['public_id'])}</code> — {safe_html(row.get('patient_name') or '—')} · {safe_html(row.get('phone') or '—')}"
-        for row in rows[:30]
-    ) if rows else "Новых заявок нет.")
+    text = "🆕 Новые заявки:\n\n" + (
+        "\n\n".join(_request_card(row) for row in rows[:30])
+        if rows else "Новых заявок нет."
+    )
     await update.effective_message.reply_text(
         text, parse_mode="HTML", reply_markup=admin_panel_keyboard()
     )
@@ -130,8 +151,11 @@ async def find_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = (
         f"<b>{safe_html(public_id)}</b>\nСтатус: {safe_html(row.get('status'))}\n"
         f"Клиент: {safe_html(row.get('patient_name'))}\nТелефон: {safe_html(row.get('phone'))}\n"
+        f"Telegram: {telegram_account_html(_profile(row))}\n"
         f"Услуга: {safe_html(row.get('confirmed_service') or row.get('service') or '—')}\n"
-        f"Дата/время: {safe_html(row.get('confirmed_date') or '—')} {safe_html(row.get('confirmed_time') or '')}"
+        f"Дата записи: {safe_html(row.get('confirmed_date') or row.get('preferred_date') or '—')}\n"
+        f"Время записи: {safe_html(row.get('confirmed_time') or row.get('preferred_time') or '—')}\n"
+        f"Доктор: {safe_html(row.get('confirmed_doctor') or 'не назначен')}"
     )
     await update.effective_message.reply_text(
         text, parse_mode="HTML", reply_markup=admin_actions_keyboard(kind, public_id, row["status"])

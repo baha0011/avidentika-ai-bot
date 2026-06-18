@@ -18,8 +18,17 @@ class DatabaseError(RuntimeError):
 
 
 class SupabaseService:
-    def __init__(self, url: str | None = None, key: str | None = None, *, client: Client | Any | None = None) -> None:
+    def __init__(self, url: str | None = None, key: str | None = None, *, client: Client | Any | None = None, sheets: Any | None = None) -> None:
         self.client = client if client is not None else create_client(str(url), str(key))
+        self.sheets = sheets
+
+    async def _mirror(self, record: dict[str, Any], event: str, details: str = "", appointment: bool = True) -> None:
+        if not self.sheets:
+            return
+        if appointment:
+            await self.sheets.sync_appointment(record, event, details)
+        else:
+            await self.sheets.append_history(record, event, details)
 
     async def _execute(self, builder: Any) -> Any:
         last_error: Exception | None = None
@@ -43,7 +52,8 @@ class SupabaseService:
             "updated_at": datetime.now(UTC).isoformat(),
         }
         result = await self._execute(
-            self.client.table("profiles").upsert(payload, on_conflict="telegram_user_id").select("id")
+            self.client.table("profiles").upsert(payload, on_conflict="telegram_user_id")
+            .select("id,telegram_user_id,username")
         )
         if not result.data:
             raise DatabaseError("Profile was not returned")
@@ -56,7 +66,9 @@ class SupabaseService:
         if not result.data:
             raise DatabaseError("Appointment was not created")
         logger.info("Appointment created: %s", payload["public_id"])
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, "Заявка создана")
+        return record
 
     async def create_support_request(self, profile_id: str, value: SupportInput) -> dict[str, Any]:
         payload = value.to_record(profile_id)
@@ -65,7 +77,9 @@ class SupabaseService:
         if not result.data:
             raise DatabaseError("Support request was not created")
         logger.info("Support request created: %s", payload["public_id"])
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, "Обращение к администратору", appointment=False)
+        return record
 
     async def update_request_status(
         self, kind: str, public_id: str, status: str, admin_telegram_id: int
@@ -87,7 +101,9 @@ class SupabaseService:
         if not result.data:
             raise DatabaseError("Request was not found")
         logger.info("Request status changed: %s -> %s", public_id, status)
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, f"Статус изменён: {status}", appointment=kind == "appointment")
+        return record
 
     async def get_profile_notification_target(self, profile_id: str) -> dict[str, Any]:
         result = await self._execute(
@@ -108,7 +124,9 @@ class SupabaseService:
             raise ValueError("Unsupported request type")
         table = "appointments" if kind == "appointment" else "support_requests"
         result = await self._execute(
-            self.client.table(table).select("*").eq("public_id", public_id).limit(1)
+            self.client.table(table)
+            .select("*,profiles(telegram_user_id,username)")
+            .eq("public_id", public_id).limit(1)
         )
         if not result.data:
             raise DatabaseError("Request was not found")
@@ -138,11 +156,13 @@ class SupabaseService:
         if not result.data:
             raise DatabaseError("Appointment was not found")
         logger.info("Appointment confirmed: %s", public_id)
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, "Запись подтверждена")
+        return record
 
     async def list_due_reminders(self, now_iso: str, cutoff_iso: str) -> list[dict[str, Any]]:
         result = await self._execute(
-            self.client.table("appointments").select("*")
+            self.client.table("appointments").select("*,profiles(telegram_user_id,username)")
             .eq("status", "confirmed").is_("reminder_24h_sent_at", "null")
             .gt("confirmed_start_at", now_iso).lte("confirmed_start_at", cutoff_iso)
         )
@@ -167,16 +187,19 @@ class SupabaseService:
         )
         if not result.data:
             raise DatabaseError("Appointment was not found")
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, f"Ответ клиента: {action}")
+        return record
 
     async def save_reschedule_request(self, public_id: str, requested: str) -> dict[str, Any]:
         record = await self.set_visit_response(public_id, "reschedule_requested")
         record["reschedule_request"] = requested
+        await self._mirror(record, "Запрос на перенос", requested)
         return record
 
     async def list_appointments_between(self, start_iso: str, end_iso: str) -> list[dict[str, Any]]:
         result = await self._execute(
-            self.client.table("appointments").select("*")
+            self.client.table("appointments").select("*,profiles(telegram_user_id,username)")
             .gte("confirmed_start_at", start_iso).lte("confirmed_start_at", end_iso)
             .order("confirmed_start_at")
         )
@@ -186,10 +209,17 @@ class SupabaseService:
         rows: list[dict[str, Any]] = []
         for table, kind in (("appointments", "appointment"), ("support_requests", "support")):
             result = await self._execute(
-                self.client.table(table).select("*").eq("status", "new").order("created_at")
+                self.client.table(table).select("*,profiles(telegram_user_id,username)")
+                .eq("status", "new").order("created_at")
             )
             rows.extend({**row, "kind": kind} for row in (result.data or []))
         return rows
+
+    async def list_all_appointments(self) -> list[dict[str, Any]]:
+        result = await self._execute(
+            self.client.table("appointments").select("*").order("created_at")
+        )
+        return result.data or []
 
     async def save_rating(self, public_id: str, rating: int) -> dict[str, Any]:
         if rating not in range(1, 6):
@@ -201,12 +231,16 @@ class SupabaseService:
         )
         if not result.data:
             raise DatabaseError("Appointment was not found")
-        return result.data[0]
+        record = result.data[0]
+        await self._mirror(record, "Получена оценка", f"{rating}/5")
+        return record
 
     async def save_review(self, public_id: str, review: str) -> None:
-        await self._execute(self.client.table("appointments").update({
+        result = await self._execute(self.client.table("appointments").update({
             "review": review[:2000], "reviewed_at": datetime.now(UTC).isoformat()
-        }).eq("public_id", public_id))
+        }).eq("public_id", public_id).select("*"))
+        if result.data:
+            await self._mirror(result.data[0], "Получен отзыв", review[:500])
 
     async def save_conversation(
         self, profile_id: str, role: str, message: str, language: str, source_urls: list[str] | None = None
