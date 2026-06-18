@@ -62,3 +62,13 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         reply_markup=main_menu(lang),
     )
     return -1
+
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = user_language(update, context)
+    await query.message.reply_text(
+        "Головне меню:" if lang == "uk" else "Главное меню:",
+        reply_markup=main_menu(lang),
+    )

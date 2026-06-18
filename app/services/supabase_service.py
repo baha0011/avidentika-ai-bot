@@ -89,6 +89,125 @@ class SupabaseService:
         logger.info("Request status changed: %s -> %s", public_id, status)
         return result.data[0]
 
+    async def get_profile_notification_target(self, profile_id: str) -> dict[str, Any]:
+        result = await self._execute(
+            self.client.table("profiles")
+            .select("telegram_user_id,preferred_language")
+            .eq("id", profile_id)
+            .limit(1)
+        )
+        if not result.data:
+            raise DatabaseError("Request owner profile was not found")
+        profile = result.data[0]
+        if profile.get("telegram_user_id") is None:
+            raise DatabaseError("Request owner has no Telegram user ID")
+        return profile
+
+    async def get_request(self, kind: str, public_id: str) -> dict[str, Any]:
+        if kind not in {"appointment", "support"}:
+            raise ValueError("Unsupported request type")
+        table = "appointments" if kind == "appointment" else "support_requests"
+        result = await self._execute(
+            self.client.table(table).select("*").eq("public_id", public_id).limit(1)
+        )
+        if not result.data:
+            raise DatabaseError("Request was not found")
+        return result.data[0]
+
+    async def confirm_appointment(
+        self, public_id: str, details: dict[str, str | None], admin_telegram_id: int
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC).isoformat()
+        payload = {
+            "status": "confirmed",
+            "confirmed_date": details["confirmed_date"],
+            "confirmed_time": details["confirmed_time"],
+            "confirmed_service": details["confirmed_service"],
+            "confirmed_doctor": details["confirmed_doctor"],
+            "confirmation_comment": details.get("confirmation_comment"),
+            "confirmed_start_at": details["confirmed_start_at"],
+            "confirmed_at": now,
+            "reminder_24h_sent_at": None,
+            "client_confirmation_status": "pending",
+            "assigned_admin_telegram_id": admin_telegram_id,
+            "updated_at": now,
+        }
+        result = await self._execute(
+            self.client.table("appointments").update(payload).eq("public_id", public_id).select("*")
+        )
+        if not result.data:
+            raise DatabaseError("Appointment was not found")
+        logger.info("Appointment confirmed: %s", public_id)
+        return result.data[0]
+
+    async def list_due_reminders(self, now_iso: str, cutoff_iso: str) -> list[dict[str, Any]]:
+        result = await self._execute(
+            self.client.table("appointments").select("*")
+            .eq("status", "confirmed").is_("reminder_24h_sent_at", "null")
+            .gt("confirmed_start_at", now_iso).lte("confirmed_start_at", cutoff_iso)
+        )
+        return result.data or []
+
+    async def mark_reminder_sent(self, public_id: str) -> None:
+        await self._execute(self.client.table("appointments").update({
+            "reminder_24h_sent_at": datetime.now(UTC).isoformat(),
+        }).eq("public_id", public_id))
+
+    async def set_visit_response(self, public_id: str, action: str) -> dict[str, Any]:
+        if action not in {"confirmed", "reschedule_requested", "cancelled"}:
+            raise ValueError("Unsupported visit response")
+        now = datetime.now(UTC).isoformat()
+        payload: dict[str, Any] = {"client_confirmation_status": action, "updated_at": now}
+        if action == "reschedule_requested":
+            payload.update({"status": "in_progress", "reschedule_requested_at": now})
+        elif action == "cancelled":
+            payload.update({"status": "cancelled", "closed_at": now})
+        result = await self._execute(
+            self.client.table("appointments").update(payload).eq("public_id", public_id).select("*")
+        )
+        if not result.data:
+            raise DatabaseError("Appointment was not found")
+        return result.data[0]
+
+    async def save_reschedule_request(self, public_id: str, requested: str) -> dict[str, Any]:
+        record = await self.set_visit_response(public_id, "reschedule_requested")
+        record["reschedule_request"] = requested
+        return record
+
+    async def list_appointments_between(self, start_iso: str, end_iso: str) -> list[dict[str, Any]]:
+        result = await self._execute(
+            self.client.table("appointments").select("*")
+            .gte("confirmed_start_at", start_iso).lte("confirmed_start_at", end_iso)
+            .order("confirmed_start_at")
+        )
+        return result.data or []
+
+    async def list_new_requests(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for table, kind in (("appointments", "appointment"), ("support_requests", "support")):
+            result = await self._execute(
+                self.client.table(table).select("*").eq("status", "new").order("created_at")
+            )
+            rows.extend({**row, "kind": kind} for row in (result.data or []))
+        return rows
+
+    async def save_rating(self, public_id: str, rating: int) -> dict[str, Any]:
+        if rating not in range(1, 6):
+            raise ValueError("Rating must be between 1 and 5")
+        result = await self._execute(
+            self.client.table("appointments").update({
+                "rating": rating, "reviewed_at": datetime.now(UTC).isoformat()
+            }).eq("public_id", public_id).select("*")
+        )
+        if not result.data:
+            raise DatabaseError("Appointment was not found")
+        return result.data[0]
+
+    async def save_review(self, public_id: str, review: str) -> None:
+        await self._execute(self.client.table("appointments").update({
+            "review": review[:2000], "reviewed_at": datetime.now(UTC).isoformat()
+        }).eq("public_id", public_id))
+
     async def save_conversation(
         self, profile_id: str, role: str, message: str, language: str, source_urls: list[str] | None = None
     ) -> None:

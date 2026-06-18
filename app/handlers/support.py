@@ -17,6 +17,8 @@ def _cancelled(text: str | None) -> bool:
 
 
 async def begin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
     lang = user_language(update, context)
     context.user_data["support"] = {}
     await update.effective_message.reply_text("Як до вас звертатися?" if lang == "uk" else "Как к вам обращаться?", reply_markup=cancel_keyboard(lang))
@@ -96,7 +98,10 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def conversation() -> ConversationHandler:
     pattern = r"^(Зв'язатися з адміністратором|Связаться с администратором)$"
     return ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(pattern), begin)],
+        entry_points=[
+            MessageHandler(filters.Regex(pattern), begin),
+            CallbackQueryHandler(begin, pattern=r"^quick:support$"),
+        ],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, get_phone)],

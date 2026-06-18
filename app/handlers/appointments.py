@@ -21,6 +21,8 @@ def _is_skip(text: str | None) -> bool:
 
 
 async def begin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
     lang = user_language(update, context)
     context.user_data["appointment"] = {}
     await update.effective_message.reply_text(
@@ -134,7 +136,10 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def conversation() -> ConversationHandler:
     book_pattern = r"^(Записатися на прийом|Записаться на приём)$"
     return ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(book_pattern), begin)],
+        entry_points=[
+            MessageHandler(filters.Regex(book_pattern), begin),
+            CallbackQueryHandler(begin, pattern=r"^quick:book$"),
+        ],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, get_phone)],

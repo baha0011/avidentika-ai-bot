@@ -41,8 +41,30 @@ def confirmation_keyboard(lang: str, prefix: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def source_keyboard(lang: str, url: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("Джерело на сайті" if lang == "uk" else "Источник на сайте", url=url)]])
+def client_actions_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "🦷 Записатися на прийом" if lang == "uk" else "🦷 Записаться на приём",
+            callback_data="quick:book",
+        )],
+        [InlineKeyboardButton(
+            "❓ Поставити запитання" if lang == "uk" else "❓ Задать вопрос",
+            callback_data="quick:ask",
+        )],
+        [InlineKeyboardButton(
+            "💬 Зв'язатися з адміністратором" if lang == "uk" else "💬 Связаться с администратором",
+            callback_data="quick:support",
+        )],
+    ])
+
+
+def client_main_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "🏠 Головне меню" if lang == "uk" else "🏠 Главное меню",
+            callback_data="quick:menu",
+        )
+    ]])
 
 
 REMOVE_KEYBOARD = ReplyKeyboardRemove()

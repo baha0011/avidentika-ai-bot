@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.handlers.start import user_language
-from app.keyboards.keyboards import TEXT, main_menu, source_keyboard
+from app.keyboards.keyboards import TEXT, client_actions_keyboard, main_menu
 from app.services.knowledge_service import KnowledgeSearchError
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,20 @@ ADDRESS = {
 }
 
 
+async def prompt_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.callback_query:
+        await update.callback_query.answer()
+    lang = user_language(update, context)
+    text = (
+        "Опишіть, будь ласка, вашу проблему або поставте запитання. Вкажіть, що саме турбує та як давно. "
+        "Я не ставлю діагноз, але допоможу зорієнтуватися в послугах і обрати відповідного фахівця клініки."
+        if lang == "uk" else
+        "Опишите, пожалуйста, вашу проблему или задайте вопрос. Укажите, что именно беспокоит и как давно. "
+        "Я не ставлю диагноз, но помогу сориентироваться в услугах и выбрать подходящего специалиста клиники."
+    )
+    await update.effective_message.reply_text(text)
+
+
 async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if not message or not message.text:
@@ -25,7 +39,7 @@ async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text = message.text.strip()
     t = TEXT[lang]
     if text == t["ask"]:
-        await message.reply_text("Напишіть ваше запитання." if lang == "uk" else "Напишите ваш вопрос.")
+        await prompt_question(update, context)
         return
     if text == t["address"]:
         await message.reply_text(ADDRESS[lang], reply_markup=main_menu(lang))
@@ -55,18 +69,22 @@ async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
         question_for_ai = (
-            f"{previous}\nУточнение пользователя: {text}"
+            f"{previous}\n Уточнение пользователя: {text}"
             if is_follow_up else text
         )
 
         answer = await context.application.bot_data["ai"].answer(question_for_ai, lang)
         context.user_data["last_question"] = question_for_ai
-        markup = source_keyboard(lang, answer.source_url) if answer.source_url else None
-        await message.reply_text(answer.text, reply_markup=markup, disable_web_page_preview=True)
+        await message.reply_text(
+            answer.text,
+            reply_markup=client_actions_keyboard(lang),
+            disable_web_page_preview=True,
+        )
     except KnowledgeSearchError:
         logger.exception("Could not answer knowledge question")
         await message.reply_text(
             "Сервіс тимчасово недоступний. Спробуйте пізніше або зателефонуйте +38 066 200 05 23."
             if lang == "uk" else
-            "Сервис временно недоступен. Попробуйте позже или позвоните +38 066 200 05 23."
+            "Сервис временно недоступен. Попробуйте позже или позвоните +38 066 200 05 23.",
+            reply_markup=client_actions_keyboard(lang),
         )

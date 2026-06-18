@@ -31,7 +31,21 @@ create table if not exists public.appointments (
   preferred_date text,
   preferred_time text,
   comment text check (comment is null or char_length(comment) <= 500),
-  status text not null default 'new' check (status in ('new', 'in_progress', 'closed', 'cancelled')),
+  confirmed_date text,
+  confirmed_time text,
+  confirmed_service text,
+  confirmed_doctor text,
+  confirmation_comment text,
+  confirmed_at timestamptz,
+  confirmed_start_at timestamptz,
+  reminder_24h_sent_at timestamptz,
+  client_confirmation_status text not null default 'pending' check (client_confirmation_status in ('pending', 'confirmed', 'reschedule_requested', 'cancelled')),
+  reschedule_requested_at timestamptz,
+  rating_requested_at timestamptz,
+  rating smallint check (rating between 1 and 5),
+  review text check (review is null or char_length(review) <= 2000),
+  reviewed_at timestamptz,
+  status text not null default 'new' check (status in ('new', 'in_progress', 'confirmed', 'closed', 'cancelled')),
   assigned_admin_telegram_id bigint,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
@@ -174,4 +188,3 @@ revoke execute on function public.match_knowledge_documents(vector, double preci
 revoke execute on function public.search_knowledge_documents(text, integer) from public, anon, authenticated;
 grant execute on function public.match_knowledge_documents(vector, double precision, integer) to service_role;
 grant execute on function public.search_knowledge_documents(text, integer) to service_role;
-

@@ -7,11 +7,12 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from app.config import ConfigurationError, load_settings
-from app.handlers import admin, appointments, questions, start, support
+from app.handlers import admin, admin_commands, admin_conversations, appointments, client_visits, questions, start, support
 from app.services.ai_service import AIService
 from app.services.knowledge_service import KnowledgeService
 from app.services.notification_service import NotificationService
 from app.services.supabase_service import SupabaseService
+from app.services.reminder_service import send_due_reminders
 from app.utils.logging import configure_logging
 from app.utils.security import RateLimiter
 
@@ -45,13 +46,30 @@ def build_application(settings=None) -> Application:
     })
     application.add_handler(appointments.conversation())
     application.add_handler(support.conversation())
-    application.add_handler(CallbackQueryHandler(admin.change_status, pattern=r"^adm:(appointment|support):[AS]-[A-F0-9]{8}:(in_progress|closed)$"))
+    application.add_handler(admin_conversations.conversation())
+    application.add_handler(client_visits.conversation())
+    application.add_handler(CallbackQueryHandler(
+        client_visits.visit_action, pattern=r"^visit:A-[A-F0-9]{8}:(confirm|cancel)$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        admin.change_status,
+        pattern=r"^adm:(appointment|support):[AS]-[A-F0-9]{8}:(in_progress|closed|cancelled)$",
+    ))
+    application.add_handler(CallbackQueryHandler(start.show_main_menu, pattern=r"^quick:menu$"))
+    application.add_handler(CallbackQueryHandler(questions.prompt_question, pattern=r"^quick:ask$"))
     application.add_handler(CommandHandler("start", start.start))
     application.add_handler(CommandHandler("help", start.help_command))
     application.add_handler(CommandHandler("cancel", start.cancel))
     application.add_handler(CommandHandler("privacy", start.privacy))
+    application.add_handler(CommandHandler("today", admin_commands.today))
+    application.add_handler(CommandHandler("tomorrow", admin_commands.tomorrow))
+    application.add_handler(CommandHandler("new", admin_commands.new_requests))
+    application.add_handler(CommandHandler("find", admin_commands.find_request))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, questions.handle_question))
     application.add_error_handler(on_error)
+    if application.job_queue is None:
+        raise RuntimeError("JobQueue недоступен. Установите зависимости из обновлённого requirements.txt")
+    application.job_queue.run_repeating(send_due_reminders, interval=300, first=10, name="24h-reminders")
     return application
 
 
