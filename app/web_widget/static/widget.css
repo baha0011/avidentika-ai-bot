@@ -109,6 +109,7 @@
   border-top: 1px solid var(--av-border);
   background: #ffffff;
 }
+.av-input-row.av-hidden { display: none; }
 .av-input-row textarea {
   flex: 1 1 auto;
   min-width: 0;
@@ -146,6 +147,19 @@
   background: #ffffff;
 }
 .av-form.av-open { display: flex; }
+.av-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+.av-form-head strong { font-size: 14px; }
+.av-form .av-cancel {
+  padding: 6px 10px;
+  color: var(--av-muted);
+  background: #f7faf9;
+}
 .av-form input,
 .av-form textarea {
   width: 100%;
