@@ -13,7 +13,8 @@
   const win = root.querySelector(".av-chat-window");
   const messages = root.querySelector(".av-chat-messages");
   const quick = root.querySelector(".av-quick");
-  const input = root.querySelector("textarea");
+  const inputRow = root.querySelector(".av-input-row");
+  const input = root.querySelector(".av-input-row textarea");
   const form = root.querySelector(".av-form");
   let session = localStorage.getItem("avidentika_session_id") || "";
   const actions = ["Записаться на приём", "Задать вопрос", "Связаться с администратором", "Услуги", "Врачи", "Цены", "Контакты"];
@@ -32,9 +33,31 @@
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = label;
-      b.onclick = () => label.toLowerCase().includes("запис") ? showAppointment() : label.toLowerCase().includes("администратор") ? showSupport() : ask(label);
+      b.onclick = () => handleQuick(label);
       quick.appendChild(b);
     });
+  }
+  function handleQuick(label) {
+    const lower = label.toLowerCase();
+    if (lower.includes("запис")) return showAppointment();
+    if (lower.includes("администратор")) return showSupport();
+    closeForm(false);
+    ask(label);
+  }
+  function closeForm(showNotice = true) {
+    if (!form.classList.contains("av-open")) return;
+    form.classList.remove("av-open");
+    form.innerHTML = "";
+    inputRow.classList.remove("av-hidden");
+    if (showNotice) msg("Форма закрыта. Можете задать вопрос или выбрать другое действие.");
+  }
+  function openForm(kind, html) {
+    form.dataset.kind = kind;
+    form.innerHTML = html;
+    form.classList.add("av-open");
+    inputRow.classList.add("av-hidden");
+    form.querySelector(".av-cancel")?.addEventListener("click", () => closeForm(true));
+    form.querySelector("input, textarea")?.focus();
   }
   async function sid() {
     if (session) return session;
@@ -45,6 +68,7 @@
     return session;
   }
   async function ask(text) {
+    closeForm(false);
     text = text.trim();
     if (!text) return;
     await sid();
@@ -63,14 +87,10 @@
     }
   }
   function showAppointment() {
-    form.dataset.kind = "appointment";
-    form.classList.add("av-open");
-    form.innerHTML = `<input name="patient_name" placeholder="Имя пациента" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><input name="service" placeholder="Услуга" required><input name="preferred_date" placeholder="Желаемая дата"><input name="preferred_time" placeholder="Желаемое время"><input name="doctor" placeholder="Врач"><textarea name="comment" placeholder="Комментарий"></textarea><button class="av-submit" type="submit">Отправить заявку</button>`;
+    openForm("appointment", `<div class="av-form-head"><strong>Предварительная запись</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя пациента" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><input name="service" placeholder="Услуга" required><input name="preferred_date" placeholder="Желаемая дата"><input name="preferred_time" placeholder="Желаемое время"><input name="doctor" placeholder="Врач"><textarea name="comment" placeholder="Комментарий"></textarea><button class="av-submit" type="submit">Отправить заявку</button>`);
   }
   function showSupport() {
-    form.dataset.kind = "support";
-    form.classList.add("av-open");
-    form.innerHTML = `<input name="patient_name" placeholder="Имя" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><textarea name="question" placeholder="Ваш вопрос" required></textarea><button class="av-submit" type="submit">Передать администратору</button>`;
+    openForm("support", `<div class="av-form-head"><strong>Связь с администратором</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><textarea name="question" placeholder="Ваш вопрос" required></textarea><button class="av-submit" type="submit">Передать администратору</button>`);
   }
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -83,7 +103,7 @@
       const r = await fetch(`${api}${endpoint}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
       if (!r.ok) throw new Error("bad");
       const d = await r.json();
-      form.classList.remove("av-open");
+      closeForm(false);
       msg(`${d.message}\nНомер: ${d.public_id}`);
     } catch {
       msg("Заявку не удалось отправить. Проверьте номер телефона или попробуйте позже.", "bot", "av-error");
