@@ -77,3 +77,16 @@ class SupportResponse(BaseModel):
     public_id: str
     status: str
     message: str
+
+
+class WebNotification(BaseModel):
+    id: int
+    public_id: str | None = None
+    kind: str
+    event_type: str
+    message: str
+    created_at: str
+
+
+class WebNotificationsResponse(BaseModel):
+    notifications: list[WebNotification] = Field(default_factory=list)
