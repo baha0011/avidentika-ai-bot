@@ -8,7 +8,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
 from app.handlers.admin import is_authorized_admin
-from app.services.notification_service import admin_actions_keyboard
+from app.services.notification_service import (
+    admin_actions_keyboard,
+    appointment_confirmation_text,
+    client_admin_message_text,
+)
+from app.services.web_notification_store import WebNotificationStore
 from app.utils.security import safe_html
 from app.utils.datetime_utils import parse_appointment_datetime
 
@@ -22,6 +27,42 @@ async def _authorized_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return True
     await update.callback_query.answer("Недостаточно прав", show_alert=True)
     return False
+
+
+async def _deliver_client_text(
+    context: ContextTypes.DEFAULT_TYPE,
+    record: dict,
+    kind: str,
+    event_type: str,
+    text: str,
+    telegram_sender,
+) -> tuple[bool, str]:
+    db = context.application.bot_data["db"]
+    store = WebNotificationStore(db)
+    target = await store.get_profile_delivery_target(record["user_id"])
+    delivered_to: list[str] = []
+
+    if target.get("telegram_user_id") is not None:
+        try:
+            await telegram_sender(target)
+            delivered_to.append("Telegram")
+        except Exception as exc:
+            logger.warning("Telegram delivery failed for %s: %s", record.get("public_id"), type(exc).__name__)
+
+    if target.get("web_session_id"):
+        try:
+            await store.create_notification(
+                target["web_session_id"],
+                record["public_id"],
+                kind,
+                event_type,
+                text,
+            )
+            delivered_to.append("website chat")
+        except Exception as exc:
+            logger.warning("Website delivery failed for %s: %s", record.get("public_id"), type(exc).__name__)
+
+    return bool(delivered_to), ", ".join(delivered_to)
 
 
 async def begin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -46,15 +87,26 @@ async def send_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         db = context.application.bot_data["db"]
         record = await db.get_request(flow["kind"], flow["public_id"])
-        profile = await db.get_profile_notification_target(record["user_id"])
-        await context.application.bot_data["notifications"].notify_client_message(
-            context.bot, record, profile, text
+        store = WebNotificationStore(db)
+        target = await store.get_profile_delivery_target(record["user_id"])
+        outbound_text = client_admin_message_text(record, target, text)
+        delivered, target_name = await _deliver_client_text(
+            context,
+            record,
+            flow["kind"],
+            "admin_message",
+            outbound_text,
+            lambda profile: context.application.bot_data["notifications"].notify_client_message(
+                context.bot, record, profile, text
+            ),
         )
     except Exception as exc:
         logger.warning("Admin message delivery failed for %s: %s", flow.get("public_id"), type(exc).__name__)
-        await update.effective_message.reply_text("⚠️ Не удалось доставить сообщение клиенту. Возможно, он заблокировал бота.")
+        await update.effective_message.reply_text("⚠️ Не удалось доставить сообщение клиенту.")
     else:
-        await update.effective_message.reply_text("✅ Сообщение отправлено клиенту.")
+        await update.effective_message.reply_text(
+            f"✅ Сообщение отправлено клиенту: {target_name}." if delivered else "⚠️ Сообщение сохранено, но клиенту не доставлено."
+        )
     context.user_data.pop("admin_flow", None)
     return ConversationHandler.END
 
@@ -156,25 +208,35 @@ async def finish_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("❌ Не удалось сохранить подтверждение записи.")
         return ConversationHandler.END
 
-    delivered = True
+    delivered = False
+    delivery_target = ""
     try:
-        profile = await db.get_profile_notification_target(record["user_id"])
-        await context.application.bot_data["notifications"].notify_appointment_confirmation(
-            context.bot, record, profile
+        store = WebNotificationStore(db)
+        target = await store.get_profile_delivery_target(record["user_id"])
+        outbound_text = appointment_confirmation_text(record, target)
+        delivered, delivery_target = await _deliver_client_text(
+            context,
+            record,
+            "appointment",
+            "confirmation",
+            outbound_text,
+            lambda profile: context.application.bot_data["notifications"].notify_appointment_confirmation(
+                context.bot, record, profile
+            ),
         )
     except Exception as exc:
-        delivered = False
         logger.warning("Confirmation delivery failed for %s: %s", flow["public_id"], type(exc).__name__)
 
     actor = safe_html(update.effective_user.full_name)
     changed = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%d.%m.%Y %H:%M")
     lines = [line for line in flow["source_text_html"].splitlines()
-             if not line.startswith("Статус:") and not line.startswith("Изменил:")]
+             if not line.startswith("Статус:") and not line.startswith("Изменил:") and not line.startswith("Доставка:")]
     lines.extend([
         f"Подтверждено: {safe_html(record['confirmed_date'])}, {safe_html(record['confirmed_time'])}",
         f"Врач: {safe_html(record['confirmed_doctor'])}",
         "Статус: <b>confirmed</b>",
         f"Изменил: {actor}, {changed} (Киев)",
+        f"Доставка: {'✅ ' + safe_html(delivery_target) if delivered else '⚠️ клиенту не доставлено'}",
     ])
     try:
         await context.bot.edit_message_text(
@@ -185,7 +247,7 @@ async def finish_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception:
         logger.warning("Could not update original admin appointment message: %s", flow["public_id"])
     await query.edit_message_text(
-        "✅ Запись подтверждена, клиент уведомлён."
+        f"✅ Запись подтверждена, клиент уведомлён: {delivery_target}."
         if delivered else
         "⚠️ Статус confirmed сохранён, но сообщение клиенту не доставлено."
     )
