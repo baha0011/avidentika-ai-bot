@@ -26,13 +26,22 @@ class GoogleSheetsService:
 
     async def _post(self, payload: dict[str, Any]) -> None:
         if not self.enabled:
+            logger.debug("Google Sheets sync skipped: service disabled")
             return
         if self.webhook_secret:
             payload = {**payload, "webhook_secret": self.webhook_secret}
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
                 response = await client.post(self.web_app_url, json=payload)
                 response.raise_for_status()
+                logger.info("Google Sheets sync ok: %s", payload.get("event") or payload.get("type"))
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:500] if exc.response is not None else ""
+            logger.warning(
+                "Google Sheets sync failed: HTTP %s %s",
+                exc.response.status_code if exc.response is not None else "?",
+                body,
+            )
         except Exception as exc:
             logger.warning("Google Sheets sync failed: %s", type(exc).__name__)
 
