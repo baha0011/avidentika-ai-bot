@@ -17,6 +17,7 @@
   const input = root.querySelector(".av-input-row textarea");
   const form = root.querySelector(".av-form");
   let session = localStorage.getItem("avidentika_session_id") || "";
+  let lastNoticeId = Number(localStorage.getItem("avidentika_last_notice_id") || "0");
   const actions = ["Записаться на приём", "Задать вопрос", "Связаться с администратором", "Услуги", "Врачи", "Цены", "Контакты"];
 
   function msg(text, who = "bot", extra = "") {
@@ -67,6 +68,21 @@
     localStorage.setItem("avidentika_session_id", session);
     return session;
   }
+  async function pollNotices() {
+    try {
+      await sid();
+      const r = await fetch(`${api}/api/notifications?session_id=${encodeURIComponent(session)}&after_id=${lastNoticeId}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      (d.notifications || []).forEach(n => {
+        if (Number(n.id) > lastNoticeId) {
+          lastNoticeId = Number(n.id);
+          localStorage.setItem("avidentika_last_notice_id", String(lastNoticeId));
+        }
+        msg(n.message, "bot", "av-notice");
+      });
+    } catch {}
+  }
   async function ask(text) {
     closeForm(false);
     text = text.trim();
@@ -109,9 +125,10 @@
       msg("Заявку не удалось отправить. Проверьте номер телефона или попробуйте позже.", "bot", "av-error");
     }
   };
-  root.querySelector(".av-chat-button").onclick = () => win.classList.toggle("av-open");
+  root.querySelector(".av-chat-button").onclick = () => { win.classList.toggle("av-open"); pollNotices(); };
   root.querySelector(".av-send").onclick = () => ask(input.value);
   input.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input.value); } };
   buttons();
   msg("Здравствуйте! Я могу сориентировать по услугам, врачам, ценам, адресу и помочь оставить предварительную заявку.");
+  setInterval(() => { if (win.classList.contains("av-open")) pollNotices(); }, 7000);
 })();
