@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AVIDENTIKA AI demo</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #13313f; background: #f6fbfb; }
+    .hero { max-width: 1040px; margin: 0 auto; padding: 72px 24px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 36px; align-items: center; }
+    h1 { font-size: clamp(34px, 6vw, 62px); line-height: 1.02; margin: 0 0 18px; }
+    p { color: #5e727c; font-size: 18px; line-height: 1.6; }
+    .card { background: white; border: 1px solid rgba(19,49,63,.1); border-radius: 28px; padding: 28px; box-shadow: 0 20px 60px rgba(11,47,57,.12); }
+    .pill { display: inline-block; padding: 8px 12px; border-radius: 999px; background: #e7f7f6; color: #08756f; font-weight: 700; font-size: 13px; margin-bottom: 18px; }
+    ul { padding-left: 20px; color: #35515c; line-height: 1.8; }
+    @media (max-width: 760px) { .hero { grid-template-columns: 1fr; padding-top: 40px; } }
+  </style>
+</head>
+<body>
+  <main class="hero">
+    <section>
+      <span class="pill">Демо для сайта стоматологии</span>
+      <h1>AI-помощник AVIDENTIKA для Webflow-сайта</h1>
+      <p>Виджет отвечает по базе знаний клиники, собирает предварительные заявки и передаёт их администратору в Telegram.</p>
+    </section>
+    <section class="card">
+      <h2>Что показать владельцу клиники</h2>
+      <ul>
+        <li>чат открывается в правом нижнем углу;</li>
+        <li>есть быстрые действия: запись, услуги, врачи, цены, контакты;</li>
+        <li>форма записи отправляет заявку в backend;</li>
+        <li>секреты остаются только на сервере.</li>
+      </ul>
+    </section>
+  </main>
+  <script src="/static/widget.js" data-api-base=""></script>
+</body>
+</html>
