@@ -21,6 +21,7 @@ from app.api.schemas import (
     SupportResponse,
 )
 from app.config import load_settings
+from app.services.web_notification_service import notify_admin_website_request
 from app.services.web_request_service import WebRequestService
 from app.utils.logging import configure_logging
 from bot import build_application
@@ -86,7 +87,13 @@ def create_app() -> FastAPI:
             profile["id"],
             {**payload.model_dump(), "user_agent": request.headers.get("user-agent")},
         )
-        await data["notifications"].notify(data["application"].bot if "application" in data else app.state.telegram_app.bot, "appointment", record, profile)
+        await notify_admin_website_request(
+            app.state.telegram_app.bot,
+            data["settings"].admin_chat_id,
+            "appointment",
+            record,
+            profile,
+        )
         return AppointmentResponse(
             public_id=record["public_id"],
             status=record["status"],
@@ -107,7 +114,13 @@ def create_app() -> FastAPI:
             profile["id"],
             {**payload.model_dump(), "user_agent": request.headers.get("user-agent")},
         )
-        await data["notifications"].notify(app.state.telegram_app.bot, "support", record, profile)
+        await notify_admin_website_request(
+            app.state.telegram_app.bot,
+            data["settings"].admin_chat_id,
+            "support",
+            record,
+            profile,
+        )
         return SupportResponse(
             public_id=record["public_id"],
             status=record["status"],
