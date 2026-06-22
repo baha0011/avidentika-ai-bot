@@ -30,6 +30,9 @@ class Settings:
     knowledge_base_url: str = "https://avidentika.com.ua/"
     crawl_delay_seconds: float = 1.0
     max_crawl_pages: int = 100
+    google_sheets_enabled: bool = False
+    google_sheets_web_app_url: str = ""
+    google_sheets_webhook_secret: str = ""
 
 
 def _required(name: str) -> str:
@@ -71,4 +74,7 @@ def load_settings(*, env_file: str | None = ".env") -> Settings:
         knowledge_base_url=os.getenv("KNOWLEDGE_BASE_URL", "https://avidentika.com.ua/"),
         crawl_delay_seconds=float(os.getenv("CRAWL_DELAY_SECONDS", "1.0")),
         max_crawl_pages=int(os.getenv("MAX_CRAWL_PAGES", "100")),
+        google_sheets_enabled=os.getenv("GOOGLE_SHEETS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+        google_sheets_web_app_url=os.getenv("GOOGLE_SHEETS_WEB_APP_URL", "").strip(),
+        google_sheets_webhook_secret=os.getenv("GOOGLE_SHEETS_WEBHOOK_SECRET", "").strip(),
     )
