@@ -74,23 +74,29 @@ async def change_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     delivered = False
     delivery_target = ""
-    try:
-        delivered, delivery_target = await _deliver_status_notice(context, kind, record)
-        if kind == "appointment" and status == "closed":
-            profile = await context.application.bot_data["db"].get_profile_notification_target(record["user_id"])
-            await context.application.bot_data["notifications"].request_rating(context.bot, record, profile)
-    except Exception as exc:
-        logger.warning(
-            "Client status notification failed for request %s: %s",
-            public_id,
-            type(exc).__name__,
-        )
+    delivery_note = ""
+    if status == "closed":
+        delivery_note = "не отправлялась: закрытие заявки"
+    else:
+        try:
+            delivered, delivery_target = await _deliver_status_notice(context, kind, record)
+            delivery_note = delivery_target if delivered else "клиенту не доставлено"
+        except Exception as exc:
+            delivery_note = "клиенту не доставлено"
+            logger.warning(
+                "Client status notification failed for request %s: %s",
+                public_id,
+                type(exc).__name__,
+            )
 
     actor = safe_html(update.effective_user.full_name)
     changed = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%d.%m.%Y %H:%M")
     original = query.message.text_html or safe_html(query.message.text)
     lines = [line for line in original.splitlines() if not line.startswith("Статус:") and not line.startswith("Изменил:") and not line.startswith("Доставка:")]
     lines.extend([f"Статус: <b>{safe_html(record['status'])}</b>", f"Изменил: {actor}, {changed} (Киев)"])
-    lines.append(f"Доставка: {'✅ ' + safe_html(delivery_target) if delivered else '⚠️ клиенту не доставлено'}")
+    if status == "closed":
+        lines.append(f"Доставка: {safe_html(delivery_note)}")
+    else:
+        lines.append(f"Доставка: {'✅ ' + safe_html(delivery_note) if delivered else '⚠️ ' + safe_html(delivery_note)}")
     keyboard = admin_actions_keyboard(kind, public_id, status)
     await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=keyboard)
