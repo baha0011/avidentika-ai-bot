@@ -45,6 +45,15 @@
     closeForm(false);
     ask(label);
   }
+  function normalizePhone(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00380") && digits.length === 14) digits = digits.slice(2);
+    else if (digits.startsWith("38") && digits.length === 12) digits = digits;
+    else if (digits.startsWith("0") && digits.length === 10) digits = "38" + digits;
+    else if (digits.startsWith("80") && digits.length === 11) digits = "3" + digits;
+    else return null;
+    return /^380\d{9}$/.test(digits) ? `+${digits}` : null;
+  }
   function closeForm(showNotice = true) {
     if (!form.classList.contains("av-open")) return;
     form.classList.remove("av-open");
@@ -103,15 +112,21 @@
     }
   }
   function showAppointment() {
-    openForm("appointment", `<div class="av-form-head"><strong>Предварительная запись</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя пациента" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><input name="service" placeholder="Услуга" required><input name="preferred_date" placeholder="Желаемая дата"><input name="preferred_time" placeholder="Желаемое время"><input name="doctor" placeholder="Врач"><textarea name="comment" placeholder="Комментарий"></textarea><button class="av-submit" type="submit">Отправить заявку</button>`);
+    openForm("appointment", `<div class="av-form-head"><strong>Предварительная запись</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя пациента" required><input name="phone" inputmode="tel" autocomplete="tel" placeholder="+38 (099) 561-67-34" required><input name="telegram_username" placeholder="Telegram username"><input name="service" placeholder="Услуга" required><input name="preferred_date" placeholder="Желаемая дата"><input name="preferred_time" placeholder="Желаемое время"><input name="doctor" placeholder="Врач"><textarea name="comment" placeholder="Комментарий"></textarea><button class="av-submit" type="submit">Отправить заявку</button>`);
   }
   function showSupport() {
-    openForm("support", `<div class="av-form-head"><strong>Связь с администратором</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя" required><input name="phone" placeholder="Телефон +380XXXXXXXXX" required><input name="telegram_username" placeholder="Telegram username"><textarea name="question" placeholder="Ваш вопрос" required></textarea><button class="av-submit" type="submit">Передать администратору</button>`);
+    openForm("support", `<div class="av-form-head"><strong>Связь с администратором</strong><button class="av-cancel" type="button">Отмена</button></div><input name="patient_name" placeholder="Имя" required><input name="phone" inputmode="tel" autocomplete="tel" placeholder="+38 (099) 561-67-34" required><input name="telegram_username" placeholder="Telegram username"><textarea name="question" placeholder="Ваш вопрос" required></textarea><button class="av-submit" type="submit">Передать администратору</button>`);
   }
   form.onsubmit = async (e) => {
     e.preventDefault();
     await sid();
     const data = Object.fromEntries(new FormData(form).entries());
+    const normalizedPhone = normalizePhone(data.phone);
+    if (!normalizedPhone) {
+      msg("Введите украинский номер телефона, например +38 (099) 561-67-34 или 099 561 67 34.", "bot", "av-error");
+      return;
+    }
+    data.phone = normalizedPhone;
     data.session_id = session;
     data.created_from_url = location.href;
     const endpoint = form.dataset.kind === "support" ? "/api/support" : "/api/appointments";
@@ -122,7 +137,7 @@
       closeForm(false);
       msg(`${d.message}\nНомер: ${d.public_id}`);
     } catch {
-      msg("Заявку не удалось отправить. Проверьте номер телефона или попробуйте позже.", "bot", "av-error");
+      msg("Заявку не удалось отправить. Проверьте данные или попробуйте позже.", "bot", "av-error");
     }
   };
   root.querySelector(".av-chat-button").onclick = () => { win.classList.toggle("av-open"); pollNotices(); };
