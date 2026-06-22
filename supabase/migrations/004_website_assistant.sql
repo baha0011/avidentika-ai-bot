@@ -6,9 +6,14 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists web_session_id text;
 
-create unique index if not exists profiles_web_session_id_unique_idx
-  on public.profiles(web_session_id)
-  where web_session_id is not null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_web_session_id_key'
+  ) then
+    alter table public.profiles add constraint profiles_web_session_id_key unique (web_session_id);
+  end if;
+end $$;
 
 alter table public.appointments
   add column if not exists source text not null default 'telegram' check (source in ('telegram', 'website')),
