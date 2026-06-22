@@ -46,6 +46,76 @@ def admin_actions_keyboard(kind: str, public_id: str, status: str) -> InlineKeyb
     return None
 
 
+def _client_language(profile: dict | None) -> str:
+    language = (profile or {}).get("preferred_language")
+    return language if language in {"uk", "ru"} else "uk"
+
+
+def client_status_text(record: dict, profile: dict | None) -> str:
+    language = _client_language(profile)
+    public_id = record["public_id"]
+    status = record["status"]
+    messages = {
+        "ru": {
+            "in_progress": f"✅ Администратор взял вашу заявку {public_id} в работу. Скоро с вами свяжутся.",
+            "cancelled": (
+                f"❌ Ваша заявка {public_id} отклонена. Для уточнения нажмите “Связаться с администратором” "
+                "или позвоните +38 066 200 05 23."
+            ),
+        },
+        "uk": {
+            "in_progress": f"✅ Адміністратор взяв вашу заявку {public_id} у роботу. Незабаром з вами зв’яжуться.",
+            "cancelled": (
+                f"❌ Вашу заявку {public_id} відхилено. Для уточнення натисніть “Зв'язатися з адміністратором” "
+                "або зателефонуйте +38 066 200 05 23."
+            ),
+        },
+    }
+    if status not in messages[language]:
+        raise ValueError(f"Unsupported notification status: {status}")
+    return messages[language][status]
+
+
+def client_admin_message_text(record: dict, profile: dict | None, message: str) -> str:
+    language = _client_language(profile)
+    title = (
+        f"💬 Повідомлення від адміністратора AVIDENTIKA щодо заявки {record['public_id']}:"
+        if language == "uk" else
+        f"💬 Сообщение от администратора AVIDENTIKA по заявке {record['public_id']}:"
+    )
+    return f"{title}\n\n{message}"
+
+
+def appointment_confirmation_text(record: dict, profile: dict | None) -> str:
+    language = _client_language(profile)
+    comment = record.get("confirmation_comment")
+    if language == "uk":
+        lines = [
+            f"✅ Ваш запис {record['public_id']} підтверджено!",
+            f"📅 Дата: {record['confirmed_date']}",
+            f"🕐 Час: {record['confirmed_time']}",
+            f"🦷 Процедура: {record['confirmed_service']}",
+            f"👨‍⚕️ Лікар: {record['confirmed_doctor']}",
+            "📍 Київ, вул. Академіка Булаховського, 5-Б",
+        ]
+        if comment:
+            lines.append(f"💬 Коментар: {comment}")
+        lines.append("Якщо плани зміняться, зателефонуйте: +38 066 200 05 23.")
+    else:
+        lines = [
+            f"✅ Ваша запись {record['public_id']} подтверждена!",
+            f"📅 Дата: {record['confirmed_date']}",
+            f"🕐 Время: {record['confirmed_time']}",
+            f"🦷 Процедура: {record['confirmed_service']}",
+            f"👨‍⚕️ Врач: {record['confirmed_doctor']}",
+            "📍 Киев, ул. Академика Булаховского, 5-Б",
+        ]
+        if comment:
+            lines.append(f"💬 Комментарий: {comment}")
+        lines.append("Если планы изменятся, позвоните: +38 066 200 05 23.")
+    return "\n".join(lines)
+
+
 class NotificationService:
     def __init__(self, admin_chat_id: int) -> None:
         self.admin_chat_id = admin_chat_id
@@ -80,86 +150,29 @@ class NotificationService:
         )
 
     async def notify_client_status(self, bot, record: dict, profile: dict) -> None:
-        language = profile.get("preferred_language")
-        language = language if language in {"uk", "ru"} else "uk"
-        public_id = record["public_id"]
-        status = record["status"]
-        messages = {
-            "ru": {
-                "in_progress": f"✅ Администратор взял вашу заявку {public_id} в работу. Скоро с вами свяжутся.",
-                "closed": f"✅ Ваша заявка {public_id} закрыта администратором.",
-                "cancelled": (
-                    f"❌ Ваша заявка {public_id} отклонена. Для уточнения нажмите “Связаться с администратором” "
-                    "или позвоните +38 066 200 05 23."
-                ),
-            },
-            "uk": {
-                "in_progress": f"✅ Адміністратор взяв вашу заявку {public_id} у роботу. Незабаром з вами зв’яжуться.",
-                "closed": f"✅ Вашу заявку {public_id} закрито адміністратором.",
-                "cancelled": (
-                    f"❌ Вашу заявку {public_id} відхилено. Для уточнення натисніть “Зв'язатися з адміністратором” "
-                    "або зателефонуйте +38 066 200 05 23."
-                ),
-            },
-        }
-        if status not in messages[language]:
-            raise ValueError(f"Unsupported notification status: {status}")
         await bot.send_message(
             chat_id=int(profile["telegram_user_id"]),
-            text=messages[language][status],
-            reply_markup=client_main_menu_keyboard(language),
+            text=client_status_text(record, profile),
+            reply_markup=client_main_menu_keyboard(_client_language(profile)),
         )
 
     async def notify_client_message(self, bot, record: dict, profile: dict, message: str) -> None:
-        language = profile.get("preferred_language")
-        language = language if language in {"uk", "ru"} else "uk"
-        title = (
-            f"💬 Повідомлення від адміністратора AVIDENTIKA щодо заявки {record['public_id']}:"
-            if language == "uk" else
-            f"💬 Сообщение от администратора AVIDENTIKA по заявке {record['public_id']}:"
-        )
+        language = _client_language(profile)
         await bot.send_message(
             chat_id=int(profile["telegram_user_id"]),
-            text=f"{title}\n\n{message}",
+            text=client_admin_message_text(record, profile, message),
             reply_markup=client_actions_keyboard(language),
         )
 
     async def notify_appointment_confirmation(self, bot, record: dict, profile: dict) -> None:
-        language = profile.get("preferred_language")
-        language = language if language in {"uk", "ru"} else "uk"
-        comment = record.get("confirmation_comment")
-        if language == "uk":
-            lines = [
-                f"✅ Ваш запис {record['public_id']} підтверджено!",
-                f"📅 Дата: {record['confirmed_date']}",
-                f"🕐 Час: {record['confirmed_time']}",
-                f"🦷 Процедура: {record['confirmed_service']}",
-                f"👨‍⚕️ Лікар: {record['confirmed_doctor']}",
-                "📍 Київ, вул. Академіка Булаховського, 5-Б",
-            ]
-            if comment:
-                lines.append(f"💬 Коментар: {comment}")
-            lines.append("Якщо плани зміняться, зателефонуйте: +38 066 200 05 23.")
-        else:
-            lines = [
-                f"✅ Ваша запись {record['public_id']} подтверждена!",
-                f"📅 Дата: {record['confirmed_date']}",
-                f"🕐 Время: {record['confirmed_time']}",
-                f"🦷 Процедура: {record['confirmed_service']}",
-                f"👨‍⚕️ Врач: {record['confirmed_doctor']}",
-                "📍 Киев, ул. Академика Булаховского, 5-Б",
-            ]
-            if comment:
-                lines.append(f"💬 Комментарий: {comment}")
-            lines.append("Если планы изменятся, позвоните: +38 066 200 05 23.")
         await bot.send_message(
             chat_id=int(profile["telegram_user_id"]),
-            text="\n".join(lines),
-            reply_markup=client_actions_keyboard(language),
+            text=appointment_confirmation_text(record, profile),
+            reply_markup=client_actions_keyboard(_client_language(profile)),
         )
 
     async def send_visit_reminder(self, bot, record: dict, profile: dict) -> None:
-        lang = profile.get("preferred_language") if profile.get("preferred_language") in {"uk", "ru"} else "uk"
+        lang = _client_language(profile)
         text = (
             f"⏰ Нагадуємо про візит до AVIDENTIKA завтра.\n\n📅 {record['confirmed_date']} о {record['confirmed_time']}\n"
             f"🦷 {record['confirmed_service']}\n👨‍⚕️ {record['confirmed_doctor']}"
@@ -175,7 +188,7 @@ class NotificationService:
         await bot.send_message(chat_id=int(profile["telegram_user_id"]), text=text, reply_markup=keyboard)
 
     async def request_rating(self, bot, record: dict, profile: dict) -> None:
-        lang = profile.get("preferred_language") if profile.get("preferred_language") in {"uk", "ru"} else "uk"
+        lang = _client_language(profile)
         text = "Оцініть, будь ласка, ваш візит до AVIDENTIKA від 1 до 5 ⭐" if lang == "uk" else "Оцените, пожалуйста, ваш визит в AVIDENTIKA от 1 до 5 ⭐"
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(str(value), callback_data=f"rate:{record['public_id']}:{value}")

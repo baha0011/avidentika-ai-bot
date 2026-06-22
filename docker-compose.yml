@@ -2,7 +2,19 @@ services:
   bot:
     build: .
     image: avidentika-ai-bot:latest
+    command: ["python", "bot.py"]
     env_file:
       - .env
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  api:
+    build: .
+    image: avidentika-ai-bot:latest
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
     restart: unless-stopped
     stop_grace_period: 20s
