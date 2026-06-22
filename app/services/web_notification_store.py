@@ -4,6 +4,8 @@ from typing import Any
 
 
 class WebNotificationStore:
+    table_name = "web_messages"
+
     def __init__(self, db: Any) -> None:
         self.db = db
 
@@ -34,14 +36,14 @@ class WebNotificationStore:
             "message": message[:2000],
         }
         result = await self.db._execute(
-            self.db.client.table("web_notifications").insert(payload).select("id")
+            self.db.client.table(self.table_name).insert(payload).select("id")
         )
         if not result.data:
             raise RuntimeError("Web notification was not created")
         return result.data[0]
 
     async def list_notifications(self, web_session_id: str, after_id: int = 0) -> list[dict[str, Any]]:
-        query = self.db.client.table("web_notifications").select(
+        query = self.db.client.table(self.table_name).select(
             "id,public_id,kind,event_type,message,created_at"
         ).eq("web_session_id", web_session_id)
         if after_id > 0:
