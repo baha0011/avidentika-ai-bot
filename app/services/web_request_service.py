@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -73,6 +73,11 @@ class WebRequestService:
             "created_from_url": _optional(data.get("created_from_url"), 500),
             "user_agent": _optional(data.get("user_agent"), 300),
         }
+        duplicate = await self._find_recent_duplicate_appointment(payload)
+        if duplicate:
+            logger.info("Website duplicate appointment ignored: %s", duplicate.get("public_id"))
+            return duplicate
+
         result = await self._execute(self.client.table("appointments").insert(payload).select("*"))
         if not result.data:
             raise RuntimeError("Appointment was not created")
@@ -81,6 +86,25 @@ class WebRequestService:
         if self.sheets:
             await self.sheets.sync_appointment(record, "Заявка с сайта")
         return record
+
+    async def _find_recent_duplicate_appointment(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        since = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        builder = (
+            self.client.table("appointments")
+            .select("*")
+            .eq("source", "website")
+            .eq("phone", payload["phone"])
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .limit(10)
+        )
+        if payload.get("web_session_id"):
+            builder = builder.eq("web_session_id", payload["web_session_id"])
+        result = await self._execute(builder)
+        for row in result.data or []:
+            if _same_appointment(row, payload):
+                return row
+        return None
 
     async def create_website_support_request(self, profile_id: str, data: dict[str, Any]) -> dict[str, Any]:
         phone = normalize_ua_phone(data.get("phone") or "")
@@ -100,6 +124,11 @@ class WebRequestService:
             "created_from_url": _optional(data.get("created_from_url"), 500),
             "user_agent": _optional(data.get("user_agent"), 300),
         }
+        duplicate = await self._find_recent_duplicate_support(payload)
+        if duplicate:
+            logger.info("Website duplicate support request ignored: %s", duplicate.get("public_id"))
+            return duplicate
+
         result = await self._execute(self.client.table("support_requests").insert(payload).select("*"))
         if not result.data:
             raise RuntimeError("Support request was not created")
@@ -108,6 +137,42 @@ class WebRequestService:
         if self.sheets:
             await self.sheets.append_history(record, "Обращение с сайта")
         return record
+
+    async def _find_recent_duplicate_support(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        since = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        builder = (
+            self.client.table("support_requests")
+            .select("*")
+            .eq("source", "website")
+            .eq("phone", payload["phone"])
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .limit(10)
+        )
+        if payload.get("web_session_id"):
+            builder = builder.eq("web_session_id", payload["web_session_id"])
+        result = await self._execute(builder)
+        for row in result.data or []:
+            if _norm(row.get("patient_name")) == _norm(payload.get("patient_name")) and _norm(row.get("question")) == _norm(payload.get("question")):
+                return row
+        return None
+
+
+def _same_appointment(row: dict[str, Any], payload: dict[str, Any]) -> bool:
+    fields = [
+        "patient_name",
+        "phone",
+        "service",
+        "preferred_date",
+        "preferred_time",
+        "doctor",
+        "comment",
+    ]
+    return all(_norm(row.get(field)) == _norm(payload.get(field)) for field in fields)
+
+
+def _norm(value: Any) -> str:
+    return str(value or "").strip().casefold()
 
 
 def _optional(value: Any, limit: int) -> str | None:
