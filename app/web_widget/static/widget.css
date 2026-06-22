@@ -73,6 +73,7 @@
 .av-msg { padding: 10px 12px; border-radius: 16px; line-height: 1.42; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
 .av-user { align-self: flex-end; color: white; background: var(--av-primary); border-bottom-right-radius: 5px; }
 .av-bot { align-self: flex-start; background: #f2f7f7; border-bottom-left-radius: 5px; }
+.av-notice { border: 1px solid rgba(15, 159, 154, 0.22); background: #effbf9; }
 .av-error { background: #fff2f2; color: #9b1c1c; }
 
 .av-quick {
