@@ -18,6 +18,7 @@
   const form = root.querySelector(".av-form");
   let session = localStorage.getItem("avidentika_session_id") || "";
   let lastNoticeId = Number(localStorage.getItem("avidentika_last_notice_id") || "0");
+  let formSubmitting = false;
   const actions = ["Записаться на приём", "Задать вопрос", "Связаться с администратором", "Услуги", "Врачи", "Цены", "Контакты"];
 
   function msg(text, who = "bot", extra = "") {
@@ -54,14 +55,24 @@
     else return null;
     return /^380\d{9}$/.test(digits) ? `+${digits}` : null;
   }
+  function setFormSubmitting(value) {
+    formSubmitting = value;
+    form.querySelectorAll("input, textarea, button").forEach(el => {
+      el.disabled = value;
+    });
+    const submit = form.querySelector(".av-submit");
+    if (submit) submit.textContent = value ? "Отправляем..." : (form.dataset.kind === "support" ? "Передать администратору" : "Отправить заявку");
+  }
   function closeForm(showNotice = true) {
     if (!form.classList.contains("av-open")) return;
+    formSubmitting = false;
     form.classList.remove("av-open");
     form.innerHTML = "";
     inputRow.classList.remove("av-hidden");
     if (showNotice) msg("Форма закрыта. Можете задать вопрос или выбрать другое действие.");
   }
   function openForm(kind, html) {
+    formSubmitting = false;
     form.dataset.kind = kind;
     form.innerHTML = html;
     form.classList.add("av-open");
@@ -119,6 +130,7 @@
   }
   form.onsubmit = async (e) => {
     e.preventDefault();
+    if (formSubmitting) return;
     await sid();
     const data = Object.fromEntries(new FormData(form).entries());
     const normalizedPhone = normalizePhone(data.phone);
@@ -130,6 +142,7 @@
     data.session_id = session;
     data.created_from_url = location.href;
     const endpoint = form.dataset.kind === "support" ? "/api/support" : "/api/appointments";
+    setFormSubmitting(true);
     try {
       const r = await fetch(`${api}${endpoint}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
       if (!r.ok) throw new Error("bad");
@@ -137,6 +150,7 @@
       closeForm(false);
       msg(`${d.message}\nНомер: ${d.public_id}`);
     } catch {
+      setFormSubmitting(false);
       msg("Заявку не удалось отправить. Проверьте данные или попробуйте позже.", "bot", "av-error");
     }
   };
