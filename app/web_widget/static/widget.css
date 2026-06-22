@@ -1,0 +1,114 @@
+:root {
+  --av-bg: #ffffff;
+  --av-text: #13313f;
+  --av-muted: #6b7b86;
+  --av-primary: #0f9f9a;
+  --av-primary-dark: #08756f;
+  --av-border: rgba(19, 49, 63, 0.12);
+  --av-shadow: 0 20px 60px rgba(11, 47, 57, 0.18);
+}
+
+.av-chat-button {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2147483000;
+  width: 64px;
+  height: 64px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--av-primary), var(--av-primary-dark));
+  color: white;
+  box-shadow: var(--av-shadow);
+  cursor: pointer;
+  font-size: 28px;
+}
+
+.av-chat-window {
+  position: fixed;
+  right: 22px;
+  bottom: 98px;
+  z-index: 2147483000;
+  width: min(390px, calc(100vw - 28px));
+  max-height: min(720px, calc(100vh - 128px));
+  border: 1px solid var(--av-border);
+  border-radius: 24px;
+  background: var(--av-bg);
+  box-shadow: var(--av-shadow);
+  overflow: hidden;
+  display: none;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--av-text);
+}
+
+.av-chat-window.av-open { display: flex; flex-direction: column; }
+
+.av-chat-header {
+  padding: 18px 18px 14px;
+  background: linear-gradient(135deg, #f3fbfa, #ffffff);
+  border-bottom: 1px solid var(--av-border);
+}
+
+.av-chat-title { font-weight: 800; font-size: 17px; }
+.av-chat-subtitle { margin-top: 4px; color: var(--av-muted); font-size: 13px; line-height: 1.35; }
+
+.av-chat-messages {
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 280px;
+}
+
+.av-msg { padding: 10px 12px; border-radius: 16px; line-height: 1.42; font-size: 14px; white-space: pre-wrap; }
+.av-user { align-self: flex-end; color: white; background: var(--av-primary); border-bottom-right-radius: 5px; }
+.av-bot { align-self: flex-start; background: #f2f7f7; border-bottom-left-radius: 5px; }
+.av-error { background: #fff2f2; color: #9b1c1c; }
+
+.av-quick { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; }
+.av-quick button,
+.av-form button,
+.av-send {
+  border: 1px solid var(--av-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--av-text);
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.av-quick button:hover,
+.av-form button:hover { border-color: var(--av-primary); color: var(--av-primary-dark); }
+
+.av-input-row { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--av-border); }
+.av-input-row textarea {
+  flex: 1;
+  resize: none;
+  height: 44px;
+  border: 1px solid var(--av-border);
+  border-radius: 16px;
+  padding: 11px 12px;
+  outline: none;
+  font: inherit;
+}
+.av-send { background: var(--av-primary); color: white; border-color: transparent; padding-inline: 15px; }
+
+.av-form { padding: 12px 16px 16px; display: none; gap: 9px; flex-direction: column; border-top: 1px solid var(--av-border); }
+.av-form.av-open { display: flex; }
+.av-form input,
+.av-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--av-border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.av-form textarea { min-height: 72px; resize: vertical; }
+.av-form .av-submit { background: var(--av-primary); color: #fff; border-color: transparent; }
+
+@media (max-width: 520px) {
+  .av-chat-button { right: 16px; bottom: 16px; }
+  .av-chat-window { right: 10px; bottom: 88px; width: calc(100vw - 20px); max-height: calc(100vh - 104px); border-radius: 20px; }
+}
