@@ -33,13 +33,40 @@ class WebRequestService:
         telegram_username: str | None = None,
     ) -> dict[str, Any]:
         language = language if language in {"uk", "ru"} else "uk"
+        username = _clean_username(telegram_username)
+        now = datetime.now(UTC).isoformat()
+
+        if username:
+            existing = await self._execute(
+                self.client.table("profiles")
+                .select("id,telegram_user_id,web_session_id,username,preferred_language")
+                .eq("username", username)
+                .not_.is_("telegram_user_id", "null")
+                .limit(1)
+            )
+            if existing.data:
+                profile = existing.data[0]
+                result = await self._execute(
+                    self.client.table("profiles")
+                    .update({
+                        "web_session_id": session_id,
+                        "preferred_language": language,
+                        "first_name": patient_name[:80] if patient_name else None,
+                        "updated_at": now,
+                    })
+                    .eq("id", profile["id"])
+                    .select("id,telegram_user_id,web_session_id,username,preferred_language")
+                )
+                if result.data:
+                    return result.data[0]
+
         payload = {
             "web_session_id": session_id,
             "telegram_user_id": None,
-            "username": _clean_username(telegram_username),
+            "username": username,
             "first_name": patient_name[:80] if patient_name else None,
             "preferred_language": language,
-            "updated_at": datetime.now(UTC).isoformat(),
+            "updated_at": now,
         }
         result = await self._execute(
             self.client.table("profiles")
